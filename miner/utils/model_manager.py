@@ -19,7 +19,8 @@ class ModelManager:
         self.model_paths = {
             "player": self.data_dir / "football-player-detection.pt",
             "pitch": self.data_dir / "football-pitch-detection.pt",
-            "ball": self.data_dir / "football-ball-detection.pt"
+            "ball": self.data_dir / "football-ball-detection.pt",
+            "player-1": self.data_dir / "player.pt"
         }
         
         # Check if models exist, download if missing

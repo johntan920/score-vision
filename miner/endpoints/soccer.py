@@ -56,7 +56,7 @@ async def process_soccer_video(
                 detail="Video file is not readable or corrupted"
             )
         
-        player_model = model_manager.get_model("player")
+        player_model = model_manager.get_model("player-1")
         pitch_model = model_manager.get_model("pitch")
         
         tracker = sv.ByteTrack()
@@ -64,6 +64,7 @@ async def process_soccer_video(
         tracking_data = {"frames": []}
         
         async for frame_number, frame in video_processor.stream_frames(video_path):
+            if frame_number > 2: break
             pitch_result = pitch_model(frame, verbose=False)[0]
             keypoints = sv.KeyPoints.from_ultralytics(pitch_result)
             
@@ -79,7 +80,8 @@ async def process_soccer_video(
                     {
                         "id": int(tracker_id),  # Convert numpy.int64 to native int
                         "bbox": [float(x) for x in bbox],  # Convert numpy.float32/64 to native float
-                        "class_id": int(class_id)  # Convert numpy.int64 to native int
+                        "class_id": int(class_id),  # Convert numpy.int64 to native int
+                        "confidence": 0.95
                     }
                     for tracker_id, bbox, class_id in zip(
                         detections.tracker_id,

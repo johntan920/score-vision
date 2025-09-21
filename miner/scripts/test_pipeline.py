@@ -77,7 +77,8 @@ async def main():
         download_models()
         
         logger.info(f"Downloading test video from {TEST_VIDEO_URL}")
-        video_path = await download_video(TEST_VIDEO_URL)
+        # video_path = await download_video(TEST_VIDEO_URL)
+        video_path = '/Volumes/Data/Bittensor/Subnet44/score-vision/video/test.mp4'
         logger.info(f"Video downloaded to {video_path}")
         
         try:
