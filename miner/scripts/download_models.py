@@ -6,11 +6,9 @@ from huggingface_hub.utils import RepositoryNotFoundError, RevisionNotFoundError
 from loguru import logger
 
 # All models in a single repository
-REPO_ID = "tmoklc/scorevisionv1"
+REPO_ID = "avantman0920/sn44-detection"
 MODELS = [
-    "football-player-detection.pt",
-    "football-ball-detection.pt",
-    "football-pitch-detection.pt"
+    "player.pt", "keypoint.pt", "player_small.pt"
 ]
 
 def download_models():

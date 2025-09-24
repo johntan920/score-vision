@@ -66,7 +66,7 @@ curl ifconfig.me
 ```bash
 fiber-post-ip --netuid 44 --subtensor.network finney --external_port [YOUR-PORT] --wallet.name [WALLET_NAME] --wallet.hotkey [HOTKEY_NAME] --external_ip [YOUR-IP]
 ```
-
+fiber-post-ip --netuid 261 --subtensor.network test --external_port 51876 --wallet.name deesabunwallet --wallet.hotkey deesabunhotkey --external_ip 108.180.147.249
 ## Running the Miner
 
 ### Test the Pipeline
