@@ -4,6 +4,7 @@ import time
 from typing import Optional, Dict, Any
 import supervision as sv
 import numpy as np
+import torch
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 import asyncio
@@ -17,6 +18,7 @@ from miner.dependencies import get_config, verify_request, blacklist_low_stake
 from sports.configs.soccer import SoccerPitchConfiguration
 from miner.utils.device import get_optimal_device
 from miner.utils.model_manager import ModelManager
+from miner.configs.rtx4090_config import RTX4090Config
 from miner.utils.video_processor import VideoProcessor
 from miner.utils.shared import miner_lock
 from miner.utils.video_downloader import download_video
@@ -24,6 +26,9 @@ from miner.utils.video_downloader import download_video
 logger = get_logger(__name__)
 
 CONFIG = SoccerPitchConfiguration()
+
+# Initialize RTX 4090 optimizations
+RTX4090Config.setup_cuda_optimizations()
 
 # Global model manager instance
 model_manager = None
@@ -38,6 +43,8 @@ def get_model_manager(config: Config = Depends(get_config)) -> ModelManager:
 async def process_soccer_video(
     video_path: str,
     model_manager: ModelManager,
+    max_frames: int = RTX4090Config.MAX_FRAMES,  # Use optimized frame count
+    fast_mode: bool = True,  # Enable fast processing mode
 ) -> Dict[str, Any]:
     """Process a soccer video and return tracking data."""
     start_time = time.time()
@@ -56,19 +63,48 @@ async def process_soccer_video(
                 detail="Video file is not readable or corrupted"
             )
         
-        player_model = model_manager.get_model("player-1")
+        player_model = model_manager.get_model("player")
         pitch_model = model_manager.get_model("pitch")
         
-        tracker = sv.ByteTrack()
+        # Configure models for RTX 4090 optimization
+        if model_manager.device == "cuda":
+            # Enable half precision for RTX 4090
+            player_model.to(torch.float16)
+            pitch_model.to(torch.float16)
         
+        tracker = sv.ByteTrack()
         tracking_data = {"frames": []}
         
-        async for frame_number, frame in video_processor.stream_frames(video_path):
-            if frame_number > 2: break
-            pitch_result = pitch_model(frame, verbose=False)[0]
+        # Get video info for smart frame sampling
+        video_info = video_processor.get_video_info(video_path)
+        total_frames = int(video_info.total_frames)
+        
+        # Smart frame sampling: sample frames across video duration
+        if total_frames > max_frames:
+            frame_indices = np.linspace(0, total_frames - 1, max_frames, dtype=int)
+        else:
+            frame_indices = list(range(min(total_frames, max_frames)))
+        
+        processed_frames = 0
+        # Use optimized frame sampling for better performance
+        async for frame_number, frame in video_processor.stream_sampled_frames(
+            video_path, 
+            frame_indices, 
+            batch_size=4 if model_manager.device == "cuda" else 1
+        ):
+            if processed_frames >= max_frames:
+                break
+                
+            # Get RTX 4090 optimized inference parameters
+            yolo_kwargs = RTX4090Config.get_yolo_kwargs()
+            yolo_kwargs['device'] = model_manager.device
+            
+            # Process pitch detection with optimized settings
+            pitch_result = pitch_model(frame, **yolo_kwargs)[0]
             keypoints = sv.KeyPoints.from_ultralytics(pitch_result)
             
-            player_result = player_model(frame, imgsz=1280, verbose=False)[0]
+            # Process player detection with optimized settings  
+            player_result = player_model(frame, **yolo_kwargs)[0]
             detections = sv.Detections.from_ultralytics(player_result)
             detections = tracker.update_with_detections(detections)
             
@@ -91,11 +127,12 @@ async def process_soccer_video(
                 ] if detections and detections.tracker_id is not None else []
             }
             tracking_data["frames"].append(frame_data)
+            processed_frames += 1
             
-            if frame_number % 100 == 0:
+            if processed_frames % 10 == 0 and processed_frames > 0:
                 elapsed = time.time() - start_time
-                fps = frame_number / elapsed if elapsed > 0 else 0
-                logger.info(f"Processed {frame_number} frames in {elapsed:.1f}s ({fps:.2f} fps)")
+                fps = processed_frames / elapsed if elapsed > 0 else 0
+                logger.info(f"Processed {processed_frames} frames in {elapsed:.1f}s ({fps:.2f} fps)")
         
         processing_time = time.time() - start_time
         tracking_data["processing_time"] = processing_time

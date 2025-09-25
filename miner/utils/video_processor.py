@@ -4,6 +4,8 @@ from typing import AsyncGenerator, Optional, Tuple
 import cv2
 import numpy as np
 import supervision as sv
+import torch
+from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
 
 class VideoProcessor:
@@ -24,6 +26,9 @@ class VideoProcessor:
             self.processing_timeout = mps_timeout
         else:  # cpu or any other device
             self.processing_timeout = cpu_timeout
+        
+        # Initialize thread pool for parallel processing
+        self.thread_pool = ThreadPoolExecutor(max_workers=4)
             
         logger.info(f"Video processor initialized with {device} device, timeout: {self.processing_timeout:.1f}s")
     
@@ -72,6 +77,56 @@ class VideoProcessor:
                 
                 # Small delay to prevent CPU hogging while still processing all frames
                 await asyncio.sleep(0)
+        
+        finally:
+            cap.release()
+    
+    async def stream_sampled_frames(
+        self,
+        video_path: str,
+        frame_indices: list,
+        batch_size: int = 4
+    ) -> AsyncGenerator[Tuple[int, np.ndarray], None]:
+        """
+        Stream specific frames efficiently with batching for RTX 4090.
+        
+        Args:
+            video_path: Path to the video file
+            frame_indices: List of frame indices to extract
+            batch_size: Number of frames to process in parallel
+            
+        Yields:
+            Tuple[int, np.ndarray]: Frame number and frame data
+        """
+        start_time = time.time()
+        cap = cv2.VideoCapture(str(video_path))
+        
+        if not cap.isOpened():
+            raise ValueError(f"Could not open video file: {video_path}")
+        
+        # Sort frame indices for efficient seeking
+        sorted_indices = sorted(frame_indices)
+        
+        try:
+            for i, target_frame in enumerate(sorted_indices):
+                elapsed_time = time.time() - start_time
+                if elapsed_time > self.processing_timeout:
+                    logger.warning(f"Video processing timeout reached after {elapsed_time:.1f}s")
+                    break
+                
+                # Seek to the target frame
+                cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+                ret, frame = cap.read()
+                
+                if not ret:
+                    logger.warning(f"Could not read frame {target_frame}")
+                    continue
+                
+                yield target_frame, frame
+                
+                # Add small delay to prevent overwhelming the GPU
+                if self.device == "cuda" and i % batch_size == 0:
+                    await asyncio.sleep(0.001)  # 1ms delay every batch
         
         finally:
             cap.release()

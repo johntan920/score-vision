@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Dict, Optional
+import torch
 from ultralytics import YOLO
 from loguru import logger
 
@@ -17,8 +18,8 @@ class ModelManager:
         
         # Define model paths
         self.model_paths = {
-            "player": self.data_dir / "player.pt"
-            "keypoint": self.data_dir / "keypoint.pt"
+            "player": self.data_dir / "player.pt",
+            "pitch": self.data_dir / "keypoint.pt",
             "player_small": self.data_dir / "player_small.pt"
         }
         
@@ -61,7 +62,29 @@ class ModelManager:
             )
         
         logger.info(f"Loading {model_name} model from {model_path} to {self.device}")
-        model = YOLO(str(model_path)).to(device=self.device)
+        model = YOLO(str(model_path))
+        
+        # Move to device and optimize for RTX 4090
+        model = model.to(device=self.device)
+        
+        # Enable optimizations for CUDA (RTX 4090)
+        if self.device == "cuda":
+            # Enable mixed precision training/inference
+            model.half()  # Convert to FP16 for faster inference on RTX 4090
+            
+            # Optimize CUDA settings
+            torch.backends.cudnn.benchmark = True  # Optimize for consistent input sizes
+            torch.backends.cuda.matmul.allow_tf32 = True  # Allow TensorFloat-32 for faster matmul
+            
+            # Warm up the model with a dummy input to optimize CUDA kernels
+            try:
+                dummy_input = torch.randn(1, 3, 640, 640, device=self.device, dtype=torch.float16)
+                with torch.no_grad():
+                    _ = model.predict(dummy_input, verbose=False)
+                logger.info(f"Model {model_name} warmed up successfully")
+            except Exception as e:
+                logger.warning(f"Model warmup failed for {model_name}: {e}")
+        
         self.models[model_name] = model
         return model
     
