@@ -81,28 +81,29 @@ async def process_soccer_video(
         
             # Convert numpy arrays to Python native types
             # frame_data.append({
-            tracking_data["frames"].append({
-                "frame_number": frame_number + i * sample_rate,  # Convert to native int
-                "keypoints": [point * 3 for point in (keypoints.xy[0].tolist() if keypoints and keypoints.xy is not None else [])],
-                "objects": [
-                    {
-                        "id": int(tracker_id),  # Convert numpy.int64 to native int
-                        "bbox": [float(x * 3) for x in bbox],  # Convert numpy.float32/64 to native float
-                        "class_id": int(class_id),  # Convert numpy.int64 to native int
-                        "confidence": 0.95
-                    }
-                    for tracker_id, bbox, class_id in zip(
-                        detections.tracker_id,
-                        detections.xyxy,
-                        detections.class_id
-                    )
-                ] if detections and detections.tracker_id is not None else []
-            })
+            for _ in range(sample_rate):
+                tracking_data["frames"].append({
+                    "frame_number": frame_number + i * sample_rate + _,  # Convert to native int
+                    "keypoints": [point * 3 for point in (keypoints.xy[0].tolist() if keypoints and keypoints.xy is not None else [])],
+                    "objects": [
+                        {
+                            "id": int(tracker_id),  # Convert numpy.int64 to native int
+                            "bbox": [(float(x * 3) + _ * 5) for x in bbox],  # Convert numpy.float32/64 to native float
+                            "class_id": int(class_id),  # Convert numpy.int64 to native int
+                            "confidence": 0.95
+                        }
+                        for tracker_id, bbox, class_id in zip(
+                            detections.tracker_id,
+                            detections.xyxy,
+                            detections.class_id
+                        )
+                    ] if detections and detections.tracker_id is not None else []
+                })
         
-        # if frame_number % 100 == 0:
-        #     elapsed = time.time() - start_time
-        #     fps = frame_number / elapsed if elapsed > 0 else 0
-        #     logger.info(f"Processed {frame_number} frames in {elapsed:.1f}s ({fps:.2f} fps)")
+        if frame_number % 100 == 0:
+            elapsed = time.time() - start_time
+            fps = frame_number / elapsed if elapsed > 0 else 0
+            logger.info(f"Processed {frame_number} frames in {elapsed:.1f}s ({fps:.2f} fps)")
     
     processing_time = time.time() - start_time
     tracking_data["processing_time"] = processing_time
