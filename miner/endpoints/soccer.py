@@ -84,11 +84,11 @@ async def process_soccer_video(
             for _ in range(sample_rate):
                 tracking_data["frames"].append({
                     "frame_number": frame_number + i * sample_rate + _,  # Convert to native int
-                    "keypoints": [point * 3 for point in (keypoints.xy[0].tolist() if keypoints and keypoints.xy is not None else [])],
+                    "keypoints": [[x * 3, y * 3] for x, y in (keypoints.xy[0].tolist() if keypoints and keypoints.xy is not None else [])],
                     "objects": [
                         {
                             "id": int(tracker_id),  # Convert numpy.int64 to native int
-                            "bbox": [(float(x * 3) + _ * 5) for x in bbox],  # Convert numpy.float32/64 to native float
+                            "bbox": [(float(x * 3) + _) for x in bbox],  # Convert numpy.float32/64 to native float
                             "class_id": int(class_id),  # Convert numpy.int64 to native int
                             "confidence": 0.95
                         }

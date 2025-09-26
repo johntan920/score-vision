@@ -17,8 +17,10 @@ class ModelManager:
         
         # Define model paths
         self.model_paths = {
-            "player": self.data_dir / "player.pt",
-            "pitch": self.data_dir / "keypoint.pt",
+            # "player": self.data_dir / "player.pt",
+            # "pitch": self.data_dir / "keypoint.pt",
+            "player": self.data_dir / "football-player-detection.pt",
+            "pitch": self.data_dir / "football-pitch-detection.pt",
             "player_small": self.data_dir / "player_small.pt"
         }
         
