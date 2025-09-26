@@ -78,33 +78,84 @@ async def process_soccer_video(
             keypoints = sv.KeyPoints.from_ultralytics(pitch_result[i])
             detections = sv.Detections.from_ultralytics(player_result[i])
             detections = tracker.update_with_detections(detections)
+
+            tracking_data["frames"].append({
+                "frame_number": frame_number + (i + 1) * sample_rate - 1,  # Convert to native int
+                "keypoints": [[x * 3, y * 3] for x, y in (keypoints.xy[0].tolist() if keypoints and keypoints.xy is not None else [])],
+                "objects": [
+                    {
+                        "id": int(tracker_id),  # Convert numpy.int64 to native int
+                        "bbox": [float(x * 3) for x in bbox],  # Convert numpy.float32/64 to native float
+                        "class_id": int(class_id),  # Convert numpy.int64 to native int
+                        "confidence": 0.95
+                    }
+                    for tracker_id, bbox, class_id in zip(
+                        detections.tracker_id,
+                        detections.xyxy,
+                        detections.class_id
+                    )
+                ] if detections and detections.tracker_id is not None else []
+            })
+
+            if len(tracking_data["frames"]) == 1:
+                for _ in range(sample_rate - 1):
+                    tracking_data["frames"].insert(frame_number + i * sample_rate + _, {
+                        "frame_number": frame_number + i * sample_rate + _,  # Convert to native int
+                        "keypoints": [[x * 3, y * 3] for x, y in (keypoints.xy[0].tolist() if keypoints and keypoints.xy is not None else [])],
+                        "objects": [
+                            {
+                                "id": int(tracker_id),  # Convert numpy.int64 to native int
+                                "bbox": [float(x * 3) for x in bbox],  # Convert numpy.float32/64 to native float
+                                "class_id": int(class_id),  # Convert numpy.int64 to native int
+                                "confidence": 0.95
+                            }
+                            for tracker_id, bbox, class_id in zip(
+                                detections.tracker_id,
+                                detections.xyxy,
+                                detections.class_id
+                            )
+                        ] if detections and detections.tracker_id is not None else []
+                    })
+            else:
+                start = tracking_data["frames"][-2]
+                end = tracking_data["frames"][-1]
+                start_f = start["frame_number"]
+                end_f = end["frame_number"]
+                for f in range(start_f + 1, end_f):
+                    alpha = (f - start_f) / (end_f - start_f)
+
+                    kp = []
+                    for ps, pe in zip(start["keypoints"], end["keypoints"]):
+                        x = ps[0] + (pe[0] - ps[0]) * alpha
+                        y = ps[1] + (pe[1] - ps[1]) * alpha
+                        kp.append([x, y])
+
+                    obj = []
+                    ids_s = {o["id"]: o for o in start["objects"]}
+                    ids_e = {o["id"]: o for o in end["objects"]}
+                    for oid, os in ids_s.items():
+                        if oid in ids_e:
+                            oe = ids_e[oid]
+                            bbox = [os["bbox"][i] + (oe["bbox"][i] - os["bbox"][i]) * alpha for i in range(4)]
+                            obj.append({
+                                "id": oid,
+                                "bbox": bbox,
+                                "class_id": os["class_id"],
+                                "confidence": 0.95
+                            })
+                        else:
+                            obj.append(os)
+                    tracking_data["frames"].insert(f, {
+                        "frame_number": f,
+                        "keypoints": kp,
+                        "objects": obj,
+                    })
         
-            # Convert numpy arrays to Python native types
-            # frame_data.append({
-            for _ in range(sample_rate):
-                tracking_data["frames"].append({
-                    "frame_number": frame_number + i * sample_rate + _,  # Convert to native int
-                    "keypoints": [[x * 3, y * 3] for x, y in (keypoints.xy[0].tolist() if keypoints and keypoints.xy is not None else [])],
-                    "objects": [
-                        {
-                            "id": int(tracker_id),  # Convert numpy.int64 to native int
-                            "bbox": [(float(x * 3) + _) for x in bbox],  # Convert numpy.float32/64 to native float
-                            "class_id": int(class_id),  # Convert numpy.int64 to native int
-                            "confidence": 0.95
-                        }
-                        for tracker_id, bbox, class_id in zip(
-                            detections.tracker_id,
-                            detections.xyxy,
-                            detections.class_id
-                        )
-                    ] if detections and detections.tracker_id is not None else []
-                })
-        
-        if frame_number % 100 == 0:
-            elapsed = time.time() - start_time
-            fps = frame_number / elapsed if elapsed > 0 else 0
-            logger.info(f"Processed {frame_number} frames in {elapsed:.1f}s ({fps:.2f} fps)")
-    
+        # if frame_number % 100 == 0:
+        #     elapsed = time.time() - start_time
+        #     fps = frame_number / elapsed if elapsed > 0 else 0
+        #     logger.info(f"Processed {frame_number} frames in {elapsed:.1f}s ({fps:.2f} fps)")
+
     processing_time = time.time() - start_time
     tracking_data["processing_time"] = processing_time
     
